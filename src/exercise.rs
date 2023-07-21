@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::process::{self, Command};
 
 const RUSTC_COLOR_ARGS: &[&str] = &["--color", "always"];
+const RUSTC_EDITION_ARGS: &[&str] = &["--edition", "2021"];
 const I_AM_DONE_REGEX: &str = r"(?m)^\s*///?\s*I\s+AM\s+NOT\s+DONE";
 const CONTEXT: usize = 2;
 const CLIPPY_CARGO_TOML_PATH: &str = "./exercises/clippy/Cargo.toml";
@@ -20,7 +21,7 @@ fn temp_file() -> String {
         .filter(|c| c.is_alphanumeric())
         .collect();
 
-    format!("./temp_{}_{}", process::id(), thread_id)
+    format!("./temp_{}_{thread_id}", process::id())
 }
 
 // The mode of the exercise.
@@ -111,17 +112,19 @@ impl Exercise {
             Mode::Compile => Command::new("rustc")
                 .args(&[self.path.to_str().unwrap(), "-o", &temp_file()])
                 .args(RUSTC_COLOR_ARGS)
+                .args(RUSTC_EDITION_ARGS)
                 .output(),
             Mode::Test => Command::new("rustc")
                 .args(&["--test", self.path.to_str().unwrap(), "-o", &temp_file()])
                 .args(RUSTC_COLOR_ARGS)
+                .args(RUSTC_EDITION_ARGS)
                 .output(),
             Mode::Clippy => {
                 let cargo_toml = format!(
                     r#"[package]
 name = "{}"
 version = "0.0.1"
-edition = "2018"
+edition = "2021"
 [[bin]]
 name = "{}"
 path = "{}.rs""#,
@@ -133,13 +136,14 @@ path = "{}.rs""#,
                     "Failed to write 📎 Clippy 📎 Cargo.toml file."
                 };
                 fs::write(CLIPPY_CARGO_TOML_PATH, cargo_toml).expect(cargo_toml_error_msg);
-                // To support the ability to run the clipy exercises, build
+                // To support the ability to run the clippy exercises, build
                 // an executable, in addition to running clippy. With a
                 // compilation failure, this would silently fail. But we expect
                 // clippy to reflect the same failure while compiling later.
                 Command::new("rustc")
                     .args(&[self.path.to_str().unwrap(), "-o", &temp_file()])
                     .args(RUSTC_COLOR_ARGS)
+                    .args(RUSTC_EDITION_ARGS)
                     .output()
                     .expect("Failed to compile!");
                 // Due to an issue with Clippy, a cargo clean is required to catch all lints.
@@ -154,7 +158,7 @@ path = "{}.rs""#,
                 Command::new("cargo")
                     .args(&["clippy", "--manifest-path", CLIPPY_CARGO_TOML_PATH])
                     .args(RUSTC_COLOR_ARGS)
-                    .args(&["--", "-D", "warnings"])
+                    .args(&["--", "-D", "warnings", "-D", "clippy::float_cmp"])
                     .output()
             }
         }
@@ -217,8 +221,7 @@ path = "{}.rs""#,
         let matched_line_index = source
             .lines()
             .enumerate()
-            .filter_map(|(i, line)| if re.is_match(line) { Some(i) } else { None })
-            .next()
+            .find_map(|(i, line)| if re.is_match(line) { Some(i) } else { None })
             .expect("This should not happen at all");
 
         let min_line = ((matched_line_index as i32) - (CONTEXT as i32)).max(0) as usize;
